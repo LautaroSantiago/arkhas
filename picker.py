@@ -5,12 +5,19 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Wnck", "3.0")
-from gi.repository import Gtk, Gdk, Wnck, Pango
+from gi.repository import Gtk, Gdk, GLib, Wnck, Pango
+
+import sysstats
 
 # Solo tiene sentido ofrecer ventanas normales o dialogos para dividir
 # pantalla; se descartan paneles, docks, tooltips, etc. que Wnck tambien
 # reporta en la lista de ventanas del escritorio.
 _SELECTABLE_TYPES = (Wnck.WindowType.NORMAL, Wnck.WindowType.DIALOG)
+
+# Intervalo de actualizacion de las estadisticas (RAM/swap del sistema y
+# CPU por ventana). 1 segundo alcanza para que se sienta "en vivo" sin
+# recorrer procesos con psutil demasiado seguido.
+_STATS_INTERVAL_MS = 1000
 
 
 def _get_candidate_windows(exclude_xids):
@@ -50,6 +57,37 @@ def _get_candidate_windows(exclude_xids):
             continue
         windows.append(w)
     return windows
+
+
+# Umbrales para colorear las pastillas de RAM/swap: por debajo del primer
+# valor es "sano", entre el primero y el segundo "atencion", entre el
+# segundo y el tercero "alto", y de ahi para arriba "critico". Los nombres
+# de clase se remueven todos antes de aplicar la que corresponde, para no
+# ir acumulando clases viejas en cada actualizacion.
+_MEM_STATE_CLASSES = (
+    "arkhas-pill-mem-unknown",
+    "arkhas-pill-mem-healthy",
+    "arkhas-pill-mem-warning",
+    "arkhas-pill-mem-high",
+    "arkhas-pill-mem-critical",
+)
+
+
+def _mem_severity_class(percent):
+    if percent < 60:
+        return "arkhas-pill-mem-healthy"
+    if percent < 75:
+        return "arkhas-pill-mem-warning"
+    if percent < 90:
+        return "arkhas-pill-mem-high"
+    return "arkhas-pill-mem-critical"
+
+
+def _apply_mem_severity(label, percent):
+    ctx = label.get_style_context()
+    for cls in _MEM_STATE_CLASSES:
+        ctx.remove_class(cls)
+    ctx.add_class(_mem_severity_class(percent))
 
 
 def pick_window(exclude_xids=None):
@@ -183,6 +221,33 @@ class WindowPicker(Gtk.Window):
 
             outer.pack_start(empty_box, True, True, 0)
 
+        # El footer de RAM/swap va siempre, este o no vacia la lista: son
+        # estadisticas del sistema, no de la seleccion. RAM a la izquierda,
+        # Swap a la derecha (mismo patron pack_start/pack_end que Esc y
+        # "Ventana X de N" en el header).
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        footer.set_margin_top(10)
+        outer.pack_start(footer, False, False, 0)
+
+        self._ram_pill = Gtk.Label(label="RAM: --%")
+        self._ram_pill.get_style_context().add_class("arkhas-pill-mem")
+        self._ram_pill.get_style_context().add_class("arkhas-pill-mem-unknown")
+        footer.pack_start(self._ram_pill, False, False, 0)
+
+        self._swap_pill = Gtk.Label(label="Swap: --%")
+        self._swap_pill.get_style_context().add_class("arkhas-pill-mem")
+        self._swap_pill.get_style_context().add_class("arkhas-pill-mem-unknown")
+        footer.pack_end(self._swap_pill, False, False, 0)
+
+        if not sysstats.stats_available():
+            self._ram_pill.set_text("RAM: N/D")
+            self._swap_pill.set_text("Swap: N/D")
+
+        self._stats_timeout_id = None
+        if sysstats.stats_available():
+            self._refresh_stats()  # 1er valor inmediato, sin esperar el 1er tick
+            self._stats_timeout_id = GLib.timeout_add(_STATS_INTERVAL_MS, self._on_stats_tick)
+
         self.connect("key-press-event", self._on_key_press)
 
     def _build_row(self, window):
@@ -199,6 +264,19 @@ class WindowPicker(Gtk.Window):
         label.set_xalign(0)
         label.set_ellipsize(Pango.EllipsizeMode.END)
         box.pack_start(label, True, True, 0)
+
+        # % de CPU que ocupa el proceso de esta ventana (y sus hijos), no
+        # cual es la causa (no se distingue "esta compilando" de "esta
+        # reproduciendo un video" - solo el numero, como se pidio).
+        cpu_label = Gtk.Label(label="")
+        cpu_label.get_style_context().add_class("arkhas-row-cpu")
+        box.pack_start(cpu_label, False, False, 0)
+        row.arkhas_cpu_label = cpu_label
+        row.arkhas_cpu_tracker = (
+            sysstats.ProcessTreeCpu(window.get_pid())
+            if sysstats.stats_available() and window.get_pid()
+            else None
+        )
 
         row.add(box)
         # se guarda el objeto Wnck.Window directo en la fila para no tener
@@ -246,7 +324,15 @@ class WindowPicker(Gtk.Window):
         row = self.listbox.get_selected_row()
         if row is None:
             return
-        row.arkhas_window.maximize()
+        try:
+            row.arkhas_window.maximize()
+        except Exception as e:
+            # Un fallo aca (ventana ya cerrada, error de Wnck, etc.) no
+            # debe impedir cerrar el picker: si _finish() no se alcanza,
+            # el Gtk.main() anidado en run_and_get_xid() queda colgado
+            # para siempre, y el proximo disparo del atajo abre un picker
+            # nuevo APILADO sobre este en vez de uno limpio.
+            print(f"Arkhas: error al maximizar: {e!r}", flush=True)
         # a diferencia de elegir con Enter, maximizar no pasa por
         # placer.py (que la desmaximizaria para acomodarla al porcentaje):
         # se cierra el picker directo, sin seleccion, para que quede
@@ -258,16 +344,26 @@ class WindowPicker(Gtk.Window):
         if row is None:
             return
         window = row.arkhas_window
-        # close() pide el cierre de la ventana (equivalente a la X del
-        # gestor de ventanas); es asincrono, la app puede tardar en
-        # cerrarse o incluso cancelarlo (ej: "guardar cambios?"). Se saca
-        # la fila de la lista de todos modos de forma optimista, sin
-        # esperar confirmacion.
-        window.close(Gtk.get_current_event_time())
+        try:
+            # close() pide el cierre de la ventana (equivalente a la X del
+            # gestor de ventanas); es asincrono, la app puede tardar en
+            # cerrarse o incluso cancelarlo (ej: "guardar cambios?"). Se
+            # saca la fila de la lista de todos modos de forma optimista,
+            # sin esperar confirmacion.
+            window.close(Gtk.get_current_event_time())
+        except Exception as e:
+            print(f"Arkhas: error al cerrar ventana: {e!r}", flush=True)
 
         index = row.get_index()
         self._windows = [w for w in self._windows if w.get_xid() != window.get_xid()]
         self.listbox.remove(row)
+
+        # No se espera al proximo tick del timer: se refresca ya, aunque
+        # close() sea asincrono y el sistema operativo pueda tardar un
+        # instante en liberar la memoria del todo (el proximo tick lo
+        # termina de reflejar si hace falta).
+        if sysstats.stats_available():
+            self._refresh_stats()
 
         if not self._windows:
             # no queda nada para elegir: mismo resultado que cancelar
@@ -284,6 +380,30 @@ class WindowPicker(Gtk.Window):
             return
         self._position_pill.set_text(f"Ventana {row.get_index() + 1} de {len(self._windows)}")
 
+    def _refresh_stats(self):
+        ram_percent = sysstats.system_ram_percent()
+        swap_percent = sysstats.system_swap_percent()
+        self._ram_pill.set_text(f"RAM: {ram_percent:.0f}%")
+        _apply_mem_severity(self._ram_pill, ram_percent)
+        self._swap_pill.set_text(f"Swap: {swap_percent:.0f}%")
+        _apply_mem_severity(self._swap_pill, swap_percent)
+
+        if self.listbox is None:
+            return
+        row = self.listbox.get_row_at_index(0)
+        while row is not None:
+            tracker = getattr(row, "arkhas_cpu_tracker", None)
+            if tracker is not None:
+                row.arkhas_cpu_label.set_text(f"{tracker.poll():.0f}%")
+            row = self.listbox.get_row_at_index(row.get_index() + 1)
+
+    def _on_stats_tick(self):
+        try:
+            self._refresh_stats()
+        except Exception as e:
+            print(f"Arkhas: error actualizando estadisticas: {e!r}", flush=True)
+        return True  # True = GLib repite el timeout; se corta explicitamente en _finish
+
     def _move_selection(self, delta):
         row = self.listbox.get_selected_row()
         index = row.get_index() if row is not None else -1
@@ -294,12 +414,29 @@ class WindowPicker(Gtk.Window):
 
     def _finish(self, xid):
         self._result = xid
-        self._release_grab()
-        self.destroy()
-        # Gtk.main() metido dentro de run_and_get_xid() bloquea la llamada;
-        # main_quit() es lo que le devuelve el control al codigo que llamo
-        # a run_and_get_xid().
-        Gtk.main_quit()
+        # se corta el timer de estadisticas ANTES de destruir: si sigue
+        # corriendo y su callback intenta actualizar labels de una
+        # ventana ya destruida, tira excepciones en cada tick indefinidamente
+        if self._stats_timeout_id is not None:
+            GLib.source_remove(self._stats_timeout_id)
+            self._stats_timeout_id = None
+        # try/finally: Gtk.main_quit() tiene que ejecutarse SIEMPRE, pase
+        # lo que pase en _release_grab()/destroy(). Si alguno de los dos
+        # tira una excepcion y main_quit() nunca se llama, el Gtk.main()
+        # anidado en run_and_get_xid() queda corriendo para siempre: el
+        # proceso sigue vivo (por eso "parecia" que el atajo dejaba de
+        # andar), pero cada disparo nuevo del atajo apila un picker mas
+        # adentro del que quedo colgado, en vez de abrir uno limpio.
+        try:
+            self._release_grab()
+            self.destroy()
+        except Exception as e:
+            print(f"Arkhas: error cerrando el picker: {e!r}", flush=True)
+        finally:
+            # Gtk.main() metido dentro de run_and_get_xid() bloquea la
+            # llamada; main_quit() es lo que le devuelve el control al
+            # codigo que llamo a run_and_get_xid().
+            Gtk.main_quit()
 
     def _grab_input(self):
         gdk_window = self.get_window()

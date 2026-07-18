@@ -1,8 +1,12 @@
 # Arkhas
 
-Divisor de pantalla activado por un atajo global, con interfaz en GTK3, pensado para Linux Mint MATE (compatible con cualquier entorno GTK3/X11).
+Utilidad de control rápido de ventanas para Linux, activada por un atajo global, con interfaz propia en GTK3. Pensada para Linux Mint MATE, compatible con cualquier entorno GTK3/X11.
 
-Arkhas no es un gestor de ventanas ni reemplaza al que ya usás: es un disparador puntual. Apretás el atajo, elegís una ventana de una lista, la ubica a la izquierda; elegís otra, la ubica a la derecha. Sin rofi, sin dependencias del gestor de ventanas específicas, sin configuración manual de atajos por `gsettings`.
+## Qué es Arkhas
+
+Arkhas empezó como un divisor de pantalla: un atajo que abre un selector de ventanas y acomoda dos, una al lado de la otra. Con el uso fue creciendo hasta cubrir un puñado de acciones rápidas sobre ventanas que antes requerían salir del teclado — cerrar, maximizar, ver qué está consumiendo recursos — todas disparadas desde el mismo picker.
+
+Arkhas **no es un gestor de ventanas**: no reemplaza a Marco (ni a ningún otro), no dibuja decoraciones ni maneja el foco por su cuenta. Es una utilidad que se apoya en el gestor de ventanas que ya tenés (vía Wnck/EWMH) para ejecutar acciones puntuales bajo demanda. Sin rofi, sin dependencias del gestor de atajos de ningún escritorio en particular, sin configuración manual por `gsettings`.
 
 ![Python](https://img.shields.io/badge/python-3-blue)
 ![GTK](https://img.shields.io/badge/GTK-3-green)
@@ -10,7 +14,7 @@ Arkhas no es un gestor de ventanas ni reemplaza al que ya usás: es un disparado
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Status](https://img.shields.io/badge/status-en%20desarrollo-orange)
 
-> **Proyecto en desarrollo activo.** Todavía está en proceso de prueba y revisión — la posición de las ventanas, en particular, puede fallar con algunas combinaciones de aplicaciones mientras se sigue afinando. El paquete `.deb` está pausado hasta que haya un ícono de bandeja (ver [Limitaciones conocidas](#limitaciones-conocidas)); por ahora se instala desde el código fuente. Usalo sabiendo que puede cambiar de un commit a otro.
+> **Proyecto en desarrollo activo.** Todavía está en proceso de prueba y revisión. El paquete `.deb` está pausado hasta que haya un ícono de bandeja (ver [Limitaciones conocidas](#limitaciones-conocidas)); por ahora se instala desde el código fuente. Usalo sabiendo que puede cambiar de un commit a otro.
 
 ## Funcionalidades
 
@@ -22,6 +26,7 @@ Arkhas no es un gestor de ventanas ni reemplaza al que ya usás: es un disparado
 - Si cancelás la segunda selección (Esc), la primera ventana pasa a ocupar el porcentaje configurado (no un 50% fijo).
 - La segunda selección excluye automáticamente la ventana que ya elegiste (por instancia, no por aplicación — podés elegir dos ventanas del mismo navegador sin problema).
 - Desde el picker, con la ventana resaltada: **X** la cierra (y la saca de la lista sin cerrar el picker), **Espacio** la maximiza (y cierra el picker).
+- Monitor de recursos en vivo dentro del picker: % de RAM (pastilla a la izquierda) y % de swap (a la derecha) del sistema, coloreados según severidad (verde → amarillo → naranja → rojo a medida que sube el uso), y el % de CPU que ocupa el proceso de cada ventana (junto con sus procesos hijos) al lado de su título. Se actualiza cada 1 segundo, y también al instante al cerrar una ventana con X.
 - Compensa automáticamente el margen invisible de las apps con decoración del lado del cliente (Chromium/GTK3: Brave, Thorium, etc.), para que no quede un hueco ni una superposición entre las dos ventanas.
 - Instancia única: si volvés a abrir la app mientras ya está corriendo, te muestra la ventana existente en vez de duplicar el proceso.
 - Arranca en segundo plano sin mostrar ventana (`--hidden`), pensado para autostart.
@@ -33,13 +38,14 @@ Arkhas no es un gestor de ventanas ni reemplaza al que ya usás: es un disparado
 - Python 3.8+
 - PyGObject (bindings de Python para GTK3) + typelibs de GTK3 y Wnck.
 - `python-xlib`.
+- `psutil` (para el % de RAM/swap y de CPU por ventana en el picker).
 
 ## Instalación
 
 Por ahora, solo desde el código fuente (el `.deb` está pausado hasta tener ícono de bandeja):
 
 ```bash
-sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-wnck-3.0 python3-xlib
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-wnck-3.0 python3-xlib python3-psutil
 git clone https://github.com/LautaroSantiago/arkhas.git
 cd arkhas
 python3 main.py
@@ -52,7 +58,7 @@ python3 main.py
 3. Ajustá el slider para elegir qué porcentaje ocupa la ventana de la izquierda (el resto va para la derecha).
 4. Click en **Guardar** — el atajo queda activo al instante, sin reiniciar la app.
 5. Apretá el atajo en cualquier momento: aparece la lista de ventanas abiertas (la más reciente primero), elegís la primera (va a la izquierda), aparece de nuevo la lista sin esa ventana, elegís la segunda (va a la derecha). Esc en la segunda selección deja la primera al porcentaje configurado.
-6. Dentro del picker: flechas para navegar, Enter para elegir, **X** para cerrar la ventana resaltada sin salir del picker, **Espacio** para maximizarla y cerrar el picker.
+6. Dentro del picker: flechas para navegar, Enter para elegir, **X** para cerrar la ventana resaltada sin salir del picker, **Espacio** para maximizarla y cerrar el picker. Abajo, las pastillas de RAM y swap del sistema se actualizan solas.
 
 ### Arranque automático al iniciar sesión
 
@@ -79,6 +85,7 @@ arkhas/
 ├── config.py                  # Persistencia en ~/.config/arkhas/config.json
 ├── hotkey.py                  # Atajo global vía XGrabKey (python-xlib), corre en un hilo aparte
 ├── picker.py                  # Selector de ventanas propio (reemplaza rofi), vía Wnck
+├── sysstats.py                 # RAM/swap del sistema y CPU por árbol de procesos (psutil)
 ├── placer.py                  # Cálculo de geometría y posicionamiento de ventanas
 ├── test_picker_flow.py        # Prueba manual: encadena 2 selecciones del picker
 ├── test_placer_flow.py        # Prueba manual: flujo completo de selección + posicionamiento
@@ -94,6 +101,10 @@ arkhas/
 
 **Selector de ventanas**: `picker.py` arma la lista con `Wnck`, ordenada por orden de apilamiento invertido (la ventana con foco más reciente aparece primero), filtrando ventanas propias de Arkhas, paneles y ventanas sin interés (`skip_tasklist`). Usa un grab de teclado/mouse propio (`Gdk.Seat.grab`) en vez de depender del foco que le dé el gestor de ventanas, con reintentos por si la ventana todavía no está mapeada en el servidor X en el primer intento. Cuando hay 0 o 1 ventana candidata, `pick_window()` resuelve la selección sin mostrar ningún diálogo.
 
+**Cierre robusto del picker**: cada acción que cierra el picker (Esc, Enter, X con lista vacía, Espacio) pasa por `_finish()`, que suelta el grab de teclado, destruye la ventana, y le avisa a GTK que termine ese ciclo interno (`Gtk.main_quit()`). Estos tres pasos están envueltos en un `try/finally` a propósito: si cualquiera de los dos primeros pasos falla (por ejemplo, un error al maximizar una ventana que ya no existe), `main_quit()` se ejecuta igual. Sin esa garantía, una excepción a mitad de camino dejaba ese ciclo interno de GTK colgado para siempre — el proceso seguía vivo, pero cada disparo nuevo del atajo apilaba un picker más adentro del que había quedado trabado, en vez de abrir uno limpio, dando la impresión de que "el atajo dejó de funcionar".
+
+**Monitor de recursos**: `sysstats.py` lee `psutil.virtual_memory()`/`swap_memory()` para las pastillas de RAM/swap, y para el % de CPU por ventana arma un `ProcessTreeCpu` por fila que suma el proceso dueño de la ventana más todos sus hijos (así una compilación lanzada desde una terminal, o un proceso de decodificación de video que un navegador delega aparte, se reflejan igual). Hay que mantener el mismo objeto `psutil.Process` entre lecturas para que el cálculo de CPU tenga sentido — psutil mide el uso transcurrido desde la última vez que se consultó ese objeto puntual, así que crear uno nuevo en cada actualización siempre daría 0. El color de las pastillas (verde/amarillo/naranja/rojo) se recalcula agregando y quitando clases CSS en caliente según el porcentaje.
+
 **Posicionamiento**: la parte más delicada. Las apps con decoración del lado del cliente (Brave, Thorium, y en general cualquier app GTK3/Chromium moderna) reservan un margen invisible alrededor de la ventana real (`_GTK_FRAME_EXTENTS`) para sombra y área de resize. Pedirle a la ventana que ocupe exactamente el rectángulo deseado sin tener esto en cuenta deja un hueco visible en el borde. `placer.py` compensa ese margen, pero en vez de calcular la corrección una sola vez y confiar en que salga bien, mide la geometría real resultante después de cada pedido (leyendo directo del servidor X, no de la caché de Wnck) y corrige el error observado, hasta 3 intentos — porque el comportamiento real de Marco + la app no sigue una fórmula fija y predecible.
 
 ## Limitaciones conocidas
@@ -107,8 +118,9 @@ arkhas/
 |---|---|---|
 | `ModuleNotFoundError: No module named 'gi'` | Faltan bindings de GTK | `sudo apt install python3-gi gir1.2-gtk-3.0` |
 | `ModuleNotFoundError: No module named 'Xlib'` | Falta python-xlib | `sudo apt install python3-xlib` |
+| Las pastillas dicen "RAM: N/D" / no aparece % de CPU por ventana | Falta psutil | `sudo apt install python3-psutil` |
 | El picker no lista ninguna ventana | No hay otras ventanas abiertas, o ya se excluyó la única disponible | Comportamiento esperado — el picker lo indica en pantalla |
-| El atajo no responde | Otra instancia ya lo tiene agarrado, el atajo elegido choca con uno del sistema, o un remapeo de teclado (xmodmap/xcape) dejó de estar activo | `pgrep -af "python3 main.py"` para ver si hay más de una instancia; si usás teclas remapeadas (F13/F14, etc.), confirmá con `xev` que la tecla sigue emitiendo el keysym esperado |
+| El atajo no responde | Otra instancia ya lo tiene agarrado, el atajo elegido choca con uno del sistema, un remapeo de teclado (xmodmap/xcape) dejó de estar activo, o quedó un proceso viejo colgado | `pgrep -af "python3 main.py"` para ver si hay más de una instancia; si hay una sola pero no responde, `pkill -9 -f "python3 main.py"`, borrar `~/.config/arkhas/arkhas.lock` y volver a arrancar; si usás teclas remapeadas (F13/F14, etc.), confirmá con `xev` que la tecla sigue emitiendo el keysym esperado |
 | Queda un hueco o superposición entre las dos ventanas | Alguna app declara `_GTK_FRAME_EXTENTS` de forma poco convencional | Abrí un issue con la salida de `ARKHAS_DEBUG=1 python3 main.py` |
 
 ## Licencia

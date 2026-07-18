@@ -90,6 +90,56 @@ row:selected label {
     font-weight: bold;
 }
 
+.arkhas-row-cpu {
+    color: #7fbf9e;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+/* Pastillas de RAM/swap: la clase base define forma y tipografia; la
+   variante de color se agrega/quita en caliente segun el % (ver
+   _apply_mem_severity en picker.py), para que el estado del sistema se
+   lea de un vistazo sin tener que leer el numero. */
+.arkhas-pill-mem {
+    border-radius: 12px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* antes de la primera lectura, o si psutil no esta disponible */
+.arkhas-pill-mem-unknown {
+    background-color: #1c3a2c;
+    color: #d7f5df;
+    border: 1px solid #3ea86b;
+}
+
+/* uso bajo: verde claro y vivo, a proposito mas "chillon" que el acento
+   habitual de la app para que se note de un vistazo que esta todo bien */
+.arkhas-pill-mem-healthy {
+    background-color: #4cff7b;
+    color: #0d1f16;
+}
+
+/* empieza a subir */
+.arkhas-pill-mem-warning {
+    background-color: #ffd23f;
+    color: #241a00;
+}
+
+/* uso alto */
+.arkhas-pill-mem-high {
+    background-color: #fb923c;
+    color: #241100;
+}
+
+/* critico: texto claro en vez de oscuro, porque el rojo saturado da
+   mejor contraste con letras claras que con oscuras */
+.arkhas-pill-mem-critical {
+    background-color: #ef4444;
+    color: #fff5f5;
+}
+
 /* pastilla estandar: se usa para las acciones (X para cerrar, Espacio
    para maximizar) */
 .arkhas-pill {
