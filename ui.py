@@ -155,23 +155,32 @@ class ArkhasWindow(Gtk.Window):
     def on_hotkey_triggered(self):
         # Este metodo lo invoca hotkey.py via GLib.idle_add, asi que corre
         # en el hilo principal de GTK y puede abrir dialogos sin problema.
-        print("Arkhas: atajo disparado", flush=True)
-        percent = self.config.get("split_percent", 50)
+        # Todo el flujo va envuelto en try/except: una excepcion no
+        # capturada en un callback de idle_add se traga en silencio (GLib
+        # solo la imprime a stderr y sigue), dejando dudas sobre si el
+        # atajo "dejo de andar" o si en realidad reventó a mitad de
+        # camino. Con esto queda visible en el log en cualquier caso.
+        try:
+            print("Arkhas: atajo disparado", flush=True)
+            percent = self.config.get("split_percent", 50)
 
-        # pick_window no abre ningun dialogo si hay 0 ventanas (no hace
-        # nada) o 1 sola (la toma directo); solo con 2 o mas candidatas
-        # muestra el picker.
-        xid1 = pick_window()
-        print(f"Arkhas: 1ra seleccion xid={xid1}", flush=True)
-        if xid1 is None:
-            return
-        place_left(xid1, percent)
-
-        xid2 = pick_window({xid1})
-        print(f"Arkhas: 2da seleccion xid={xid2}", flush=True)
-        if xid2 is None:
-            # sin 2da ventana disponible (o si se cancelo con Esc), la 1ra
-            # queda al mismo porcentaje configurado, no a un 50% fijo
+            # pick_window no abre ningun dialogo si hay 0 ventanas (no hace
+            # nada) o 1 sola (la toma directo); solo con 2 o mas candidatas
+            # muestra el picker.
+            xid1 = pick_window()
+            print(f"Arkhas: 1ra seleccion xid={xid1}", flush=True)
+            if xid1 is None:
+                return
             place_left(xid1, percent)
-        else:
-            place_right(xid2, percent)
+
+            xid2 = pick_window({xid1})
+            print(f"Arkhas: 2da seleccion xid={xid2}", flush=True)
+            if xid2 is None:
+                # sin 2da ventana disponible (o si se cancelo con Esc), la
+                # 1ra queda al mismo porcentaje configurado, no a un 50%
+                # fijo
+                place_left(xid1, percent)
+            else:
+                place_right(xid2, percent)
+        except Exception as e:
+            print(f"Arkhas: ERROR en el flujo del atajo: {e!r}", flush=True)
