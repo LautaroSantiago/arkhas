@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import datetime
 import errno
 import fcntl
 import os
@@ -46,6 +47,19 @@ def _acquire_lock():
 
 
 def main():
+    # Marcador de arranque con timestamp, ANTES de cualquier otra cosa
+    # (incluido el intento de lock): el log de /tmp/arkhas.log ahora se
+    # acumula entre arranques (ver arkhas-autostart.desktop, que usa >>
+    # en vez de >), asi que con esto queda clara la hora exacta de CADA
+    # intento de arranque - crucial para detectar si dos instancias se
+    # estan lanzando casi al mismo tiempo en el boot (una carrera tipica
+    # si el sesion manager relanza la app por "recordar aplicaciones en
+    # ejecucion" ADEMAS del autostart normal).
+    print(
+        f"\n=== Arkhas arrancando: {datetime.datetime.now().isoformat()} (pid={os.getpid()}) ===",
+        flush=True,
+    )
+
     lock_file, existing_pid = _acquire_lock()
     if lock_file is None:
         # ya hay una instancia con el atajo agarrado: en vez de competir
@@ -124,9 +138,17 @@ def main():
         loop.run()
     except KeyboardInterrupt:
         pass
+    except Exception as e:
+        # cualquier excepcion no capturada en el loop principal (por
+        # ejemplo dentro de un callback de GLib mal manejado en algun
+        # punto) queda registrada con timestamp, en vez de que el proceso
+        # muera sin dejar rastro de por que
+        print(f"Arkhas: EXCEPCION NO MANEJADA EN EL LOOP PRINCIPAL: {e!r}", flush=True)
+        import traceback
+        traceback.print_exc()
     finally:
         win.hotkey_listener.stop()
-        print("Chau.", flush=True)
+        print(f"Arkhas: cerrando: {datetime.datetime.now().isoformat()} (pid={os.getpid()})", flush=True)
 
 
 if __name__ == "__main__":
