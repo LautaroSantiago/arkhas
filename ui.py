@@ -3,7 +3,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Gdk
 
-from config import load_config, save_config
+from config import load_config, save_config, RESERVED_BARE_KEYNAMES
 from hotkey import HotkeyListener
 from picker import pick_window
 from placer import place_left, place_right
@@ -113,6 +113,18 @@ class ArkhasWindow(Gtk.Window):
         if keyname in MODIFIER_KEYNAMES:
             return True
 
+        if keyname == "Escape":
+            # Escape cancela la espera de tecla en vez de guardarse como el
+            # atajo mismo: sin este caso especial, alguien que apreta Escape
+            # para "salir" de "Presiona la combinacion..." termina con
+            # Escape guardado como atajo (bug real que paso en produccion:
+            # deja el atajo global capturando CUALQUIER Escape del sistema,
+            # y ademas pisa la combinacion que el usuario tenia configurada
+            # antes sin que se de cuenta).
+            self.listening_for_key = False
+            self.hotkey_button.set_label(self._hotkey_display())
+            return True
+
         modifiers = []
         state = event.state
         if state & Gdk.ModifierType.CONTROL_MASK:
@@ -123,6 +135,18 @@ class ArkhasWindow(Gtk.Window):
             modifiers.append("Super")
         if state & Gdk.ModifierType.SHIFT_MASK:
             modifiers.append("Shift")
+
+        if keyname in RESERVED_BARE_KEYNAMES and not modifiers:
+            # X y Espacio sueltos son atajos LOCALES del picker (cerrar y
+            # maximizar); usarlos como atajo global generaria conflicto
+            # cada vez que el picker esta abierto. Con un modificador
+            # encima (ej: Ctrl+Alt+X) no hay problema, se permiten.
+            self.listening_for_key = False
+            self.hotkey_button.set_label(self._hotkey_display())
+            self.status_label.set_text(
+                f"'{keyname}' sola la usa el picker (cerrar/maximizar) — probá con un modificador o elegí otra tecla."
+            )
+            return True
 
         self.config["hotkey"] = {"keysym": keyname, "modifiers": modifiers}
         self.hotkey_button.set_label(self._format_hotkey(self.config["hotkey"]))

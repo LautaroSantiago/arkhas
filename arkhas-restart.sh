@@ -18,7 +18,7 @@ rm -f "$HOME/.config/arkhas/arkhas.lock"
 cd "$(dirname "$(readlink -f "$0")")"
 
 echo "Levantando Arkhas oculto..."
-setsid nohup python3 main.py --hidden > /tmp/arkhas.log 2>&1 < /dev/null &
+setsid nohup python3 main.py --hidden >> /tmp/arkhas.log 2>&1 < /dev/null &
 disown 2>/dev/null || true
 sleep 1
 

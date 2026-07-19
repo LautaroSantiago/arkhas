@@ -15,6 +15,23 @@ DEFAULTS = {
     "split_percent": 50,
 }
 
+# Estas teclas, apretadas SOLAS (sin ningun modificador), son controles
+# locales del picker (X = cerrar ventana, Espacio = maximizar, Escape =
+# cancelar). Guardarlas como atajo global generaria un conflicto cada vez
+# que el picker esta abierto: ui.py ya evita que se puedan capturar asi
+# desde la interfaz, pero se valida aca tambien por si el archivo termina
+# con un valor invalido de otra forma (edicion manual, o una version
+# anterior con el bug que permitia guardar Escape).
+RESERVED_BARE_KEYNAMES = ("x", "X", "space", "Escape")
+
+
+def is_valid_hotkey(hotkey):
+    if not hotkey or not hotkey.get("keysym"):
+        return False
+    if hotkey["keysym"] in RESERVED_BARE_KEYNAMES and not hotkey.get("modifiers"):
+        return False
+    return True
+
 
 def load_config():
     os.makedirs(CONFIG_DIR, exist_ok=True)
@@ -28,6 +45,16 @@ def load_config():
     # la tiene sigue cargando con el valor por defecto en vez de romper.
     merged = dict(DEFAULTS)
     merged.update(data)
+
+    if not is_valid_hotkey(merged.get("hotkey")):
+        print(
+            f"Arkhas: atajo guardado invalido ({merged.get('hotkey')!r}), "
+            f"volviendo al de fabrica.",
+            flush=True,
+        )
+        merged["hotkey"] = dict(DEFAULTS["hotkey"])
+        save_config(merged)
+
     return merged
 
 
