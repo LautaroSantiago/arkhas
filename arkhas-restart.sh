@@ -7,7 +7,7 @@
 set -e
 
 echo "Matando cualquier instancia de Arkhas..."
-pkill -9 -f "main.py" 2>/dev/null || true
+pkill -9 -f "arkhas.py" 2>/dev/null || true
 sleep 1
 
 echo "Limpiando el lockfile..."
@@ -18,16 +18,23 @@ rm -f "$HOME/.config/arkhas/arkhas.lock"
 cd "$(dirname "$(readlink -f "$0")")"
 
 echo "Levantando Arkhas oculto..."
-setsid nohup python3 main.py --hidden >> /tmp/arkhas.log 2>&1 < /dev/null &
+setsid nohup python3 arkhas.py --hidden >> /tmp/arkhas.log 2>&1 < /dev/null &
 disown 2>/dev/null || true
 sleep 1
 
-echo "--- log ---"
-cat /tmp/arkhas.log
+# El volcado completo del log solo tiene sentido si alguien lo esta
+# mirando en una terminal de verdad. Si este script se invoca desde el
+# autostart (stdout redirigido a un archivo, no a una terminal), volcar
+# el log completo ahi mismo lo haria crecer mucho mas rapido de lo
+# necesario en cada boot (se estaria copiando el log adentro de si mismo).
+if [ -t 1 ]; then
+    echo "--- log ---"
+    cat /tmp/arkhas.log
+fi
 
 echo "--- proceso ---"
-if pgrep -af "main.py" > /dev/null; then
-    pgrep -af "main.py"
+if pgrep -af "arkhas.py" > /dev/null; then
+    pgrep -af "arkhas.py"
 else
-    echo "NO HAY NINGUN PROCESO CORRIENDO - algo fallo, revisar el log de arriba"
+    echo "NO HAY NINGUN PROCESO CORRIENDO - algo fallo, revisar el log"
 fi

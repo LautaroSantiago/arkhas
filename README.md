@@ -48,9 +48,9 @@ Por ahora, solo desde el código fuente (el `.deb` está pausado hasta tener íc
 
 ```bash
 sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-wnck-3.0 python3-xlib python3-psutil python3-cairo
-git clone https://github.com/LautaroSantiago/arkhas.git
-cd arkhas
-python3 main.py
+git clone https://github.com/LautaroSantiago/arkhas-window-utils.git
+cd arkhas-window-utils
+python3 arkhas.py
 ```
 
 ## Uso
@@ -70,12 +70,12 @@ mkdir -p ~/.config/autostart
 cp arkhas-autostart.desktop ~/.config/autostart/
 ```
 
-Con esto, Arkhas arranca en segundo plano (sin mostrar ventana) cada vez que iniciás sesión, y el atajo queda disponible sin tocar nada. Para abrir la ventana de configuración más tarde, simplemente corré `python3 main.py` de nuevo — como ya hay una instancia corriendo, te va a traer al frente esa misma ventana en vez de abrir una nueva.
+Con esto, Arkhas arranca en segundo plano (sin mostrar ventana) cada vez que iniciás sesión, y el atajo queda disponible sin tocar nada. El autostart no llama a `arkhas.py` directo: pasa por `arkhas-restart.sh`, que primero mata cualquier instancia que haya quedado viva de una sesión anterior y limpia el lockfile antes de relanzar — así cada boot arranca desde cero, sin arrastrar ningún estado raro de la vez anterior. Para abrir la ventana de configuración más tarde, simplemente corré `python3 arkhas.py` de nuevo — como ya hay una instancia corriendo, te va a traer al frente esa misma ventana en vez de abrir una nueva.
 
 Para terminar el proceso del todo (y que el atajo deje de funcionar):
 
 ```bash
-pkill -f "python3 main.py"
+pkill -f "python3 arkhas.py"
 ```
 
 ### Si el atajo deja de responder
@@ -83,7 +83,7 @@ pkill -f "python3 main.py"
 `arkhas-restart.sh` mata cualquier instancia (nueva o vieja), limpia el lockfile, y vuelve a levantar Arkhas desde cero — sin tener que acordarse de la secuencia de comandos a mano cada vez:
 
 ```bash
-cd ~/arkhas
+cd ~/arkhas-window-utils
 bash arkhas-restart.sh
 ```
 
@@ -93,7 +93,7 @@ Al final imprime el log y confirma si el proceso quedó corriendo. Si el problem
 
 ```
 arkhas/
-├── main.py                    # Punto de entrada: lock de instancia única, señales, loop principal
+├── arkhas.py                    # Punto de entrada: lock de instancia única, señales, loop principal
 ├── ui.py                      # Ventana de configuración: atajo, slider, y orquesta el flujo al dispararse
 ├── theme.py                   # Paleta visual verde compartida por toda la app
 ├── config.py                  # Persistencia en ~/.config/arkhas/config.json
@@ -119,7 +119,7 @@ arkhas/
 
 **Cierre robusto del picker**: cada acción que cierra el picker (Esc, Enter, X con lista vacía, Espacio) pasa por `_finish()`, que suelta el grab de teclado, destruye la ventana, y le avisa a GTK que termine ese ciclo interno (`Gtk.main_quit()`). Estos tres pasos están envueltos en un `try/finally` a propósito: si cualquiera de los dos primeros pasos falla (por ejemplo, un error al maximizar una ventana que ya no existe), `main_quit()` se ejecuta igual. Sin esa garantía, una excepción a mitad de camino dejaba ese ciclo interno de GTK colgado para siempre — el proceso seguía vivo, pero cada disparo nuevo del atajo apilaba un picker más adentro del que había quedado trabado, en vez de abrir uno limpio, dando la impresión de que "el atajo dejó de funcionar".
 
-**Resistencia a caídas del proceso**: `main.py` tiene varias capas pensadas específicamente para que el proceso no muera sin dejar rastro. (1) Todo el arranque —incluida la toma del lock, algo que puede fallar por disco lleno o permisos— está envuelto en un try/except de última instancia que loguea con timestamp y traceback completo antes de salir, en vez de un crash silencioso. (2) Se instala un manejador de bajo nivel para errores fatales de la conexión X principal (`XSetIOErrorHandler`, vía `ctypes`): si el servidor X se corta de golpe, GDK por diseño llama a `exit()` directo en código C, sin pasar por ningún `try/except` de Python — el manejador propio deja constancia clara en el log e intenta auto-relanzarse con `os.execv` hasta 3 veces (el lockfile se libera solo durante el `execv`, gracias a que Python abre archivos con *close-on-exec* por default desde la 3.4, así que el proceso relanzado no compite consigo mismo por el lock). (3) El log se trunca solo si supera 5MB, para que un proceso corriendo semanas sin reiniciar no vaya llenando el disco de a poco. (Se evaluó pedirle al kernel una prioridad más baja frente al OOM killer vía `/proc/self/oom_score_adj`, pero un proceso sin privilegios no puede bajar ese valor en Linux — requiere `CAP_SYS_RESOURCE` — así que se descartó: solo iba a fallar en silencio o generar ruido en el log en cada arranque, sin ningún beneficio real.)
+**Resistencia a caídas del proceso**: `arkhas.py` tiene varias capas pensadas específicamente para que el proceso no muera sin dejar rastro. (1) Todo el arranque —incluida la toma del lock, algo que puede fallar por disco lleno o permisos— está envuelto en un try/except de última instancia que loguea con timestamp y traceback completo antes de salir, en vez de un crash silencioso. (2) Se instala un manejador de bajo nivel para errores fatales de la conexión X principal (`XSetIOErrorHandler`, vía `ctypes`): si el servidor X se corta de golpe, GDK por diseño llama a `exit()` directo en código C, sin pasar por ningún `try/except` de Python — el manejador propio deja constancia clara en el log e intenta auto-relanzarse con `os.execv` hasta 3 veces (el lockfile se libera solo durante el `execv`, gracias a que Python abre archivos con *close-on-exec* por default desde la 3.4, así que el proceso relanzado no compite consigo mismo por el lock). (3) El log se trunca solo si supera 5MB, para que un proceso corriendo semanas sin reiniciar no vaya llenando el disco de a poco. (Se evaluó pedirle al kernel una prioridad más baja frente al OOM killer vía `/proc/self/oom_score_adj`, pero un proceso sin privilegios no puede bajar ese valor en Linux — requiere `CAP_SYS_RESOURCE` — así que se descartó: solo iba a fallar en silencio o generar ruido en el log en cada arranque, sin ningún beneficio real.)
 
 **Monitor de recursos**: `sysstats.py` lee `psutil.virtual_memory()`/`swap_memory()` para las pastillas de RAM/swap, y para el % por ventana arma un `ProcessTreeMemory` por fila que suma la memoria (RSS + porción swappeada) del proceso dueño de la ventana más todos sus hijos (así una compilación lanzada desde una terminal, o un proceso de decodificación de video que un navegador delega aparte, se reflejan igual). A diferencia de una métrica de CPU, la memoria no depende de mantener el mismo objeto entre lecturas — es una lectura instantánea, y se mantiene estable aunque la app esté inactiva, a diferencia del CPU que cae a 0% todo el tiempo. El color de las pastillas (verde/amarillo/naranja/rojo) se recalcula agregando y quitando clases CSS en caliente según el porcentaje.
 
@@ -147,7 +147,7 @@ arkhas/
 | El atajo guardado cambió solo, sin que lo hayas tocado a propósito | Apretar Escape mientras la ventana esperaba una tecla nueva ("Presioná la combinación...") lo guardaba como el atajo literal en vez de cancelar la espera — bug corregido; si tenés una versión anterior, revisá `~/.config/arkhas/config.json` y reconfigurá desde la interfaz | Actualizar a la versión más reciente |
 | No me deja asignar X, Espacio o Escape solas como atajo | X, Espacio y Escape sueltas son controles del picker (cerrar, maximizar, cancelar); usarlas como atajo global chocaría con esos controles cada vez que el picker está abierto | Comportamiento esperado — agregá un modificador (ej. Ctrl+Alt+X) o elegí otra tecla |
 | El atajo no anda justo al reiniciar la PC, pero sí después de reiniciar Arkhas a mano | Si usás un remapeo de teclado (xmodmap/xcape) que corre por su cuenta al iniciar sesión, puede terminar de aplicarse DESPUÉS de que Arkhas ya arrancó — bug corregido: Arkhas ahora reacciona en vivo al evento `MappingNotify` que manda el servidor X cuando el mapeo cambia, sin importar el orden de arranque | Actualizar a la versión más reciente |
-| Queda un hueco o superposición entre las dos ventanas | Alguna app declara `_GTK_FRAME_EXTENTS` de forma poco convencional | Abrí un issue con la salida de `ARKHAS_DEBUG=1 python3 main.py` |
+| Queda un hueco o superposición entre las dos ventanas | Alguna app declara `_GTK_FRAME_EXTENTS` de forma poco convencional | Abrí un issue con la salida de `ARKHAS_DEBUG=1 python3 arkhas.py` |
 
 ## Licencia
 

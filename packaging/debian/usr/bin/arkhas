@@ -1,2 +1,2 @@
 #!/bin/sh
-exec python3 /usr/share/arkhas/main.py "$@"
+exec python3 /usr/share/arkhas/arkhas.py "$@"

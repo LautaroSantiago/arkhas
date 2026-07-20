@@ -31,7 +31,7 @@ class ArkhasWindow(Gtk.Window):
         self.config = load_config()
         self.listening_for_key = False
         self.hotkey_listener = HotkeyListener(on_trigger=self.on_hotkey_triggered)
-        # main.py asigna esto despues de crear la ventana; se accede via
+        # arkhas.py asigna esto despues de crear la ventana; se accede via
         # getattr por si en algun momento se instancia sin tray (ej. tests)
         self.tray = None
 
