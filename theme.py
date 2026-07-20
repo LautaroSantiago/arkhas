@@ -9,7 +9,7 @@ from gi.repository import Gtk, Gdk
 #
 # Un CssProvider en GTK3 aplica reglas a TODOS los widgets del proceso que
 # coincidan con los selectores, sin importar en que ventana esten - por eso
-# alcanza con cargarlo una vez (apply_theme, llamado desde main.py) para que
+# alcanza con cargarlo una vez (apply_theme, llamado desde arkhas.py) para que
 # tambien se vea correcto en las ventanas del picker, creadas mas tarde.
 CSS = b"""
 window {

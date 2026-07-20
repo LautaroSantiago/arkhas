@@ -228,7 +228,7 @@ def main():
         # cualquier pedido de cierre (el del usuario haciendo click en la
         # X, o uno que llegue del gestor de ventanas). Se oculta en vez de
         # destruir: el proceso y el atajo global siguen vivos, y volver a
-        # correr "python3 main.py" la vuelve a mostrar via _show_window.
+        # correr "python3 arkhas.py" la vuelve a mostrar via _show_window.
         print("Arkhas: delete-event recibido -> ocultando ventana (el atajo sigue activo)", flush=True)
         win.hide()
         return True

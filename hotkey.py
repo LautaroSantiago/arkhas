@@ -239,7 +239,7 @@ if __name__ == "__main__":
     hk = cfg.get("hotkey")
 
     if not hk:
-        print("No hay atajo guardado todavia. Corre main.py, configuralo y guardalo primero.")
+        print("No hay atajo guardado todavia. Corre arkhas.py, configuralo y guardalo primero.")
     else:
         print(f"Escuchando atajo: {hk}  (Ctrl+C para salir)")
 
